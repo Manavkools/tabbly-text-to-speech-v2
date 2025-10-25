@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  sesame-tts:
+    build: .
+    ports:
+      - "8000:80"
+    environment:
+      - PORT=80
+      - PORT_HEALTH=80
+    volumes:
+      # Mount cache directory to persist model downloads
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
