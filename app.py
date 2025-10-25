@@ -48,14 +48,33 @@ def load_model():
         if not hf_token:
             logger.warning("No HUGGINGFACE_TOKEN found. Model access may be restricted.")
         
-        # Load tokenizer with retry logic
+        # Load tokenizer with retry logic and different approaches
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                tokenizer = AutoTokenizer.from_pretrained(
-                    model_name,
-                    token=hf_token
-                )
+                if attempt == 0:
+                    # Try standard approach
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        model_name,
+                        token=hf_token
+                    )
+                elif attempt == 1:
+                    # Try with use_fast=False for compatibility
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        model_name,
+                        token=hf_token,
+                        use_fast=False
+                    )
+                else:
+                    # Try with force_download and local_files_only=False
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        model_name,
+                        token=hf_token,
+                        use_fast=False,
+                        local_files_only=False,
+                        force_download=True
+                    )
+                
                 logger.info("✓ Tokenizer loaded successfully")
                 break
             except Exception as e:
@@ -66,15 +85,37 @@ def load_model():
                 time.sleep(5)
         
         logger.info(f"Loading model from {model_name}")
-        # Load model with retry logic
+        # Load model with retry logic and different approaches
         for attempt in range(max_retries):
             try:
-                model = AutoModel.from_pretrained(
-                    model_name,
-                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                    trust_remote_code=True,
-                    token=hf_token
-                ).to(device)
+                if attempt == 0:
+                    # Try standard approach
+                    model = AutoModel.from_pretrained(
+                        model_name,
+                        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                        trust_remote_code=True,
+                        token=hf_token
+                    ).to(device)
+                elif attempt == 1:
+                    # Try with local_files_only=False
+                    model = AutoModel.from_pretrained(
+                        model_name,
+                        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                        trust_remote_code=True,
+                        token=hf_token,
+                        local_files_only=False
+                    ).to(device)
+                else:
+                    # Try with force_download
+                    model = AutoModel.from_pretrained(
+                        model_name,
+                        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                        trust_remote_code=True,
+                        token=hf_token,
+                        local_files_only=False,
+                        force_download=True
+                    ).to(device)
+                
                 model.eval()
                 logger.info("✓ Model loaded successfully")
                 break
