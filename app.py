@@ -42,21 +42,47 @@ def load_model():
         
         model_name = "sesame/csm-1b"
         logger.info(f"Loading tokenizer from {model_name}")
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
+        # Load tokenizer with retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                logger.info("✓ Tokenizer loaded successfully")
+                break
+            except Exception as e:
+                logger.warning(f"Tokenizer load attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                import time
+                time.sleep(5)
         
         logger.info(f"Loading model from {model_name}")
-        model = AutoModel.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            trust_remote_code=True
-        ).to(device)
-        model.eval()
+        # Load model with retry logic
+        for attempt in range(max_retries):
+            try:
+                model = AutoModel.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                    trust_remote_code=True
+                ).to(device)
+                model.eval()
+                logger.info("✓ Model loaded successfully")
+                break
+            except Exception as e:
+                logger.warning(f"Model load attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                import time
+                time.sleep(10)
         
         is_ready = True
-        logger.info("✓ Model loaded successfully")
+        logger.info("✓ Model loading completed successfully")
         
     except Exception as e:
         logger.error(f"✗ Error loading model: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         is_ready = False
         raise
 
