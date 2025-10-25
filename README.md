@@ -19,7 +19,16 @@ A production-ready text-to-speech service using Sesame CSM 1B model deployed on 
 
 ## Quick Start
 
-### 1. Deploy to RunPod
+### 1. Get Hugging Face Access
+
+**IMPORTANT**: The Sesame CSM 1B model is gated. You need to:
+
+1. **Go to**: https://huggingface.co/sesame/csm-1b
+2. **Click "Request Access"** and fill out the form
+3. **Wait for approval** (usually takes a few hours to days)
+4. **Get your Hugging Face token**: https://huggingface.co/settings/tokens
+
+### 2. Deploy to RunPod
 
 1. **Push to GitHub**:
    ```bash
@@ -37,7 +46,10 @@ A production-ready text-to-speech service using Sesame CSM 1B model deployed on 
    - Configure GPU settings (RTX 4090, A40, etc.)
    - Set workers: Min 0, Max 3
    - Container disk: 10 GB
-   - Environment variables: `PORT=80`, `PORT_HEALTH=80`
+   - **Environment variables**: 
+     - `PORT=80`
+     - `PORT_HEALTH=80`
+     - `HUGGINGFACE_TOKEN=your_hf_token_here`
    - Expose HTTP port: 80
    - Idle timeout: 5 seconds
 

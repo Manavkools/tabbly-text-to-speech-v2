@@ -43,11 +43,19 @@ def load_model():
         model_name = "sesame/csm-1b"
         logger.info(f"Loading tokenizer from {model_name}")
         
+        # Get Hugging Face token from environment
+        hf_token = os.getenv("HUGGINGFACE_TOKEN")
+        if not hf_token:
+            logger.warning("No HUGGINGFACE_TOKEN found. Model access may be restricted.")
+        
         # Load tokenizer with retry logic
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                tokenizer = AutoTokenizer.from_pretrained(
+                    model_name,
+                    token=hf_token
+                )
                 logger.info("✓ Tokenizer loaded successfully")
                 break
             except Exception as e:
@@ -64,7 +72,8 @@ def load_model():
                 model = AutoModel.from_pretrained(
                     model_name,
                     torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                    trust_remote_code=True
+                    trust_remote_code=True,
+                    token=hf_token
                 ).to(device)
                 model.eval()
                 logger.info("✓ Model loaded successfully")
@@ -86,13 +95,16 @@ def load_model():
         is_ready = False
         raise
 
-# Load model on startup
+# Load model on startup - this will download the model when worker starts
 @app.on_event("startup")
 async def startup_event():
+    logger.info("🚀 Starting model download on worker startup...")
     try:
         load_model()
+        logger.info("✅ Model ready - worker can handle requests immediately!")
     except Exception as e:
-        logger.error(f"Failed to load model on startup: {e}")
+        logger.error(f"❌ Failed to load model on startup: {e}")
+        # Don't exit - let the worker start but mark as not ready
 
 # REQUIRED: Health check endpoint for RunPod load balancer
 @app.get("/ping")
