@@ -10,17 +10,34 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# Upgrade pip first
+RUN pip install --upgrade pip
+
 # Clone the official Sesame CSM repository
 RUN git clone https://github.com/SesameAILabs/csm.git sesame_csm
 
 # Copy our FastAPI app
 COPY app.py .
 
-# Install the CSM package first (this will install its dependencies)
-RUN cd sesame_csm && pip install -e .
-
-# Install additional FastAPI dependencies
+# Install dependencies step by step to avoid conflicts
 RUN pip install fastapi uvicorn[standard] pydantic
+
+# Install CSM dependencies manually to avoid conflicts
+RUN pip install --no-deps \
+    huggingface_hub \
+    transformers \
+    tokenizers \
+    torch \
+    torchaudio \
+    numpy \
+    scipy \
+    librosa \
+    soundfile \
+    sentencepiece \
+    protobuf
+
+# Install CSM package without dependencies
+RUN cd sesame_csm && pip install -e . --no-deps
 
 # Set environment variables
 ENV PORT=80
