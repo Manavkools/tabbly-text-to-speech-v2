@@ -38,6 +38,8 @@ def load_model():
         logger.info("Loading Sesame CSM 1B model using official generator...")
         
         # Import the official CSM generator
+        import sys
+        sys.path.append('/app/sesame_csm')
         from generator import load_csm_1b
         
         # Determine device
