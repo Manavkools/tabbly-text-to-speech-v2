@@ -34,7 +34,17 @@ RUN pip install --no-deps \
     librosa \
     soundfile \
     sentencepiece \
-    protobuf
+    protobuf \
+    tqdm \
+    fsspec \
+    requests \
+    packaging \
+    pyyaml \
+    filelock \
+    typing-extensions \
+    regex \
+    safetensors \
+    accelerate
 
 # Install CSM package without dependencies
 RUN cd sesame_csm && pip install -e . --no-deps
