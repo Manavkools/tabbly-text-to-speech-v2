@@ -49,7 +49,7 @@ def load_model():
             logger.warning("No HUGGINGFACE_TOKEN found. Model access may be restricted.")
         
         # Load tokenizer with retry logic and different approaches
-        max_retries = 3
+        max_retries = 5
         for attempt in range(max_retries):
             try:
                 if attempt == 0:
@@ -65,7 +65,7 @@ def load_model():
                         token=hf_token,
                         use_fast=False
                     )
-                else:
+                elif attempt == 2:
                     # Try with force_download and local_files_only=False
                     tokenizer = AutoTokenizer.from_pretrained(
                         model_name,
@@ -74,13 +74,47 @@ def load_model():
                         local_files_only=False,
                         force_download=True
                     )
+                elif attempt == 3:
+                    # Try with legacy tokenizer
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        model_name,
+                        token=hf_token,
+                        use_fast=False,
+                        local_files_only=False,
+                        force_download=True,
+                        legacy=True
+                    )
+                else:
+                    # Last attempt - try with minimal options
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        model_name,
+                        token=hf_token,
+                        use_fast=False,
+                        local_files_only=False,
+                        force_download=True,
+                        legacy=True,
+                        trust_remote_code=True
+                    )
                 
                 logger.info("✓ Tokenizer loaded successfully")
                 break
             except Exception as e:
                 logger.warning(f"Tokenizer load attempt {attempt + 1} failed: {e}")
                 if attempt == max_retries - 1:
-                    raise
+                    # If all attempts fail, try to use a fallback tokenizer
+                    logger.warning("All tokenizer attempts failed, trying fallback approach...")
+                    try:
+                        # Try to use a different tokenizer as fallback
+                        from transformers import LlamaTokenizer
+                        tokenizer = LlamaTokenizer.from_pretrained(
+                            "meta-llama/Llama-3.2-1B-Instruct",
+                            token=hf_token
+                        )
+                        logger.info("✓ Fallback tokenizer loaded successfully")
+                        break
+                    except Exception as fallback_error:
+                        logger.error(f"Fallback tokenizer also failed: {fallback_error}")
+                        raise
                 import time
                 time.sleep(5)
         

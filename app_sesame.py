@@ -50,11 +50,21 @@ def load_model():
         
         logger.info(f"Using device: {device}")
         
-        # Load the generator
-        generator = load_csm_1b(device=device)
+        # Load the generator with retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                generator = load_csm_1b(device=device)
+                logger.info("✓ Model loaded successfully using official generator")
+                break
+            except Exception as e:
+                logger.warning(f"Model load attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                import time
+                time.sleep(10)
         
         is_ready = True
-        logger.info("✓ Model loaded successfully using official generator")
         
     except Exception as e:
         logger.error(f"✗ Error loading model: {e}")

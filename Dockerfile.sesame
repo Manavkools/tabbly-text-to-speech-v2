@@ -15,13 +15,12 @@ RUN git clone https://github.com/SesameAILabs/csm.git sesame_csm
 
 # Copy our FastAPI app
 COPY app_sesame.py .
-COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install the CSM package
+# Install the CSM package first (this will install its dependencies)
 RUN cd sesame_csm && pip install -e .
+
+# Install additional FastAPI dependencies
+RUN pip install fastapi uvicorn[standard] pydantic
 
 # Set environment variables
 ENV PORT=80
