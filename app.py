@@ -101,20 +101,9 @@ def load_model():
             except Exception as e:
                 logger.warning(f"Tokenizer load attempt {attempt + 1} failed: {e}")
                 if attempt == max_retries - 1:
-                    # If all attempts fail, try to use a fallback tokenizer
-                    logger.warning("All tokenizer attempts failed, trying fallback approach...")
-                    try:
-                        # Try to use a different tokenizer as fallback
-                        from transformers import LlamaTokenizer
-                        tokenizer = LlamaTokenizer.from_pretrained(
-                            "meta-llama/Llama-3.2-1B-Instruct",
-                            token=hf_token
-                        )
-                        logger.info("✓ Fallback tokenizer loaded successfully")
-                        break
-                    except Exception as fallback_error:
-                        logger.error(f"Fallback tokenizer also failed: {fallback_error}")
-                        raise
+                    # If all attempts fail, raise the error
+                    logger.error("All tokenizer loading attempts failed")
+                    raise
                 import time
                 time.sleep(5)
         
