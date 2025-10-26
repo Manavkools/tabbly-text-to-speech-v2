@@ -46,6 +46,9 @@ RUN pip install \
     safetensors \
     accelerate
 
+# Install CSM package dependencies first
+RUN cd sesame_csm && pip install -r requirements.txt
+
 # Install CSM package
 RUN cd sesame_csm && pip install -e .
 
