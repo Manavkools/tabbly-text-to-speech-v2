@@ -22,8 +22,8 @@ COPY app.py .
 # Install dependencies step by step to avoid conflicts
 RUN pip install fastapi uvicorn[standard] pydantic
 
-# Install CSM dependencies manually to avoid conflicts
-RUN pip install --no-deps \
+# Install all required dependencies
+RUN pip install \
     huggingface_hub \
     transformers \
     tokenizers \
@@ -46,8 +46,8 @@ RUN pip install --no-deps \
     safetensors \
     accelerate
 
-# Install CSM package without dependencies
-RUN cd sesame_csm && pip install -e . --no-deps
+# Install CSM package
+RUN cd sesame_csm && pip install -e .
 
 # Set environment variables
 ENV PORT=80
