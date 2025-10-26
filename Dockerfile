@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
 RUN git clone https://github.com/SesameAILabs/csm.git sesame_csm
 
 # Copy our FastAPI app
-COPY app_sesame.py .
+COPY app.py .
 
 # Install the CSM package first (this will install its dependencies)
 RUN cd sesame_csm && pip install -e .
@@ -31,4 +31,4 @@ ENV NO_TORCH_COMPILE=1
 EXPOSE 80
 
 # Start server
-CMD ["python", "app_sesame.py"]
+CMD ["python", "app.py"]
