@@ -4,24 +4,31 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
+    git \
     libsndfile1 \
     ffmpeg \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install
-COPY requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Clone the official Sesame CSM repository
+RUN git clone https://github.com/SesameAILabs/csm.git sesame_csm
 
-# Copy application
-COPY app.py .
+# Copy our FastAPI app
+COPY app_sesame.py .
+
+# Install the CSM package first (this will install its dependencies)
+RUN cd sesame_csm && pip install -e .
+
+# Install additional FastAPI dependencies
+RUN pip install fastapi uvicorn[standard] pydantic
+
+# Set environment variables
+ENV PORT=80
+ENV PORT_HEALTH=80
+ENV NO_TORCH_COMPILE=1
 
 # Expose port
 EXPOSE 80
 
-# Environment variables
-ENV PORT=80
-ENV PORT_HEALTH=80
-
 # Start server
-CMD ["python", "app.py"]
+CMD ["python", "app_sesame.py"]

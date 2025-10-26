@@ -7,8 +7,7 @@ import base64
 import io
 import os
 import logging
-from transformers import AutoTokenizer, AutoModel
-import numpy as np
+import sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,14 +16,14 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Sesame TTS API", version="1.0.0")
 
 # Global variables for model
-model = None
-tokenizer = None
-device = None
+generator = None
 is_ready = False
 
 class TTSRequest(BaseModel):
     text: str
     sample_rate: int = 24000
+    speaker: int = 0
+    max_audio_length_ms: int = 10000
 
 class TTSResponse(BaseModel):
     audio_base64: str
@@ -32,115 +31,31 @@ class TTSResponse(BaseModel):
     format: str = "wav"
 
 def load_model():
-    """Load the Sesame CSM 1B model"""
-    global model, tokenizer, device, is_ready
+    """Load the Sesame CSM 1B model using the official generator"""
+    global generator, is_ready
     
     try:
-        logger.info("Loading Sesame CSM 1B model...")
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info("Loading Sesame CSM 1B model using official generator...")
+        
+        # Import the official CSM generator
+        from generator import load_csm_1b
+        
+        # Determine device
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
+        
         logger.info(f"Using device: {device}")
         
-        model_name = "sesame/csm-1b"
-        logger.info(f"Loading tokenizer from {model_name}")
-        
-        # Get Hugging Face token from environment
-        hf_token = os.getenv("HUGGINGFACE_TOKEN")
-        if not hf_token:
-            logger.warning("No HUGGINGFACE_TOKEN found. Model access may be restricted.")
-        
-        # Load tokenizer with retry logic and different approaches
-        max_retries = 5
+        # Load the generator with retry logic
+        max_retries = 3
         for attempt in range(max_retries):
             try:
-                if attempt == 0:
-                    # Try standard approach
-                    tokenizer = AutoTokenizer.from_pretrained(
-                        model_name,
-                        token=hf_token
-                    )
-                elif attempt == 1:
-                    # Try with use_fast=False for compatibility
-                    tokenizer = AutoTokenizer.from_pretrained(
-                        model_name,
-                        token=hf_token,
-                        use_fast=False
-                    )
-                elif attempt == 2:
-                    # Try with force_download and local_files_only=False
-                    tokenizer = AutoTokenizer.from_pretrained(
-                        model_name,
-                        token=hf_token,
-                        use_fast=False,
-                        local_files_only=False,
-                        force_download=True
-                    )
-                elif attempt == 3:
-                    # Try with legacy tokenizer
-                    tokenizer = AutoTokenizer.from_pretrained(
-                        model_name,
-                        token=hf_token,
-                        use_fast=False,
-                        local_files_only=False,
-                        force_download=True,
-                        legacy=True
-                    )
-                else:
-                    # Last attempt - try with minimal options
-                    tokenizer = AutoTokenizer.from_pretrained(
-                        model_name,
-                        token=hf_token,
-                        use_fast=False,
-                        local_files_only=False,
-                        force_download=True,
-                        legacy=True,
-                        trust_remote_code=True
-                    )
-                
-                logger.info("✓ Tokenizer loaded successfully")
-                break
-            except Exception as e:
-                logger.warning(f"Tokenizer load attempt {attempt + 1} failed: {e}")
-                if attempt == max_retries - 1:
-                    # If all attempts fail, raise the error
-                    logger.error("All tokenizer loading attempts failed")
-                    raise
-                import time
-                time.sleep(5)
-        
-        logger.info(f"Loading model from {model_name}")
-        # Load model with retry logic and different approaches
-        for attempt in range(max_retries):
-            try:
-                if attempt == 0:
-                    # Try standard approach
-                    model = AutoModel.from_pretrained(
-                        model_name,
-                        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                        trust_remote_code=True,
-                        token=hf_token
-                    ).to(device)
-                elif attempt == 1:
-                    # Try with local_files_only=False
-                    model = AutoModel.from_pretrained(
-                        model_name,
-                        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                        trust_remote_code=True,
-                        token=hf_token,
-                        local_files_only=False
-                    ).to(device)
-                else:
-                    # Try with force_download
-                    model = AutoModel.from_pretrained(
-                        model_name,
-                        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                        trust_remote_code=True,
-                        token=hf_token,
-                        local_files_only=False,
-                        force_download=True
-                    ).to(device)
-                
-                model.eval()
-                logger.info("✓ Model loaded successfully")
+                generator = load_csm_1b(device=device)
+                logger.info("✓ Model loaded successfully using official generator")
                 break
             except Exception as e:
                 logger.warning(f"Model load attempt {attempt + 1} failed: {e}")
@@ -150,7 +65,6 @@ def load_model():
                 time.sleep(10)
         
         is_ready = True
-        logger.info("✓ Model loading completed successfully")
         
     except Exception as e:
         logger.error(f"✗ Error loading model: {e}")
@@ -159,7 +73,7 @@ def load_model():
         is_ready = False
         raise
 
-# Load model on startup - this will download the model when worker starts
+# Load model on startup
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 Starting model download on worker startup...")
@@ -180,7 +94,7 @@ async def health_check():
     - 200: Model is ready
     - 503: Model failed to load
     """
-    if model is None:
+    if generator is None:
         # Model is still initializing
         return Response(status_code=204)
     
@@ -213,11 +127,13 @@ async def generate_tts(request: TTSRequest):
     Args:
         text: The text to convert to speech
         sample_rate: Output sample rate (default: 24000)
+        speaker: Speaker ID (default: 0)
+        max_audio_length_ms: Maximum audio length in milliseconds (default: 10000)
     
     Returns:
         Base64-encoded WAV audio file
     """
-    if not is_ready or model is None:
+    if not is_ready or generator is None:
         raise HTTPException(status_code=503, detail="Model not ready")
     
     if not request.text or len(request.text.strip()) == 0:
@@ -226,37 +142,25 @@ async def generate_tts(request: TTSRequest):
     try:
         logger.info(f"Generating TTS for text: {request.text[:50]}...")
         
-        # Generate audio using the model
+        # Generate audio using the official generator
         with torch.no_grad():
-            # Tokenize the input text
-            inputs = tokenizer(request.text, return_tensors="pt", padding=True, truncation=True, max_length=512).to(device)
-            
-            # Generate audio using the model
-            if hasattr(model, 'generate'):
-                audio_output = model.generate(**inputs)
-            else:
-                # If model doesn't have generate method, use forward pass
-                outputs = model(**inputs)
-                audio_output = outputs.last_hidden_state if hasattr(outputs, 'last_hidden_state') else outputs[0]
-            
-            # Convert to numpy array if needed
-            if isinstance(audio_output, torch.Tensor):
-                audio_tensor = audio_output.cpu()
-            else:
-                audio_tensor = torch.from_numpy(audio_output)
+            audio = generator.generate(
+                text=request.text,
+                speaker=request.speaker,
+                context=[],
+                max_audio_length_ms=request.max_audio_length_ms,
+            )
             
             # Ensure correct shape for audio (1, samples)
-            if audio_tensor.dim() > 2:
-                audio_tensor = audio_tensor.squeeze()
-            if audio_tensor.dim() == 1:
-                audio_tensor = audio_tensor.unsqueeze(0)
+            if audio.dim() == 1:
+                audio = audio.unsqueeze(0)
             
             # Normalize audio to prevent clipping
-            audio_tensor = audio_tensor / torch.max(torch.abs(audio_tensor))
+            audio = audio / torch.max(torch.abs(audio))
         
         # Convert to WAV format
         buffer = io.BytesIO()
-        torchaudio.save(buffer, audio_tensor, request.sample_rate, format="wav")
+        torchaudio.save(buffer, audio.cpu(), request.sample_rate, format="wav")
         buffer.seek(0)
         
         # Encode to base64
@@ -281,7 +185,7 @@ async def generate_tts_audio(request: TTSRequest):
     Returns:
         WAV audio file (audio/wav)
     """
-    if not is_ready or model is None:
+    if not is_ready or generator is None:
         raise HTTPException(status_code=503, detail="Model not ready")
     
     if not request.text or len(request.text.strip()) == 0:
@@ -290,37 +194,25 @@ async def generate_tts_audio(request: TTSRequest):
     try:
         logger.info(f"Generating TTS audio for: {request.text[:50]}...")
         
-        # Generate audio using the model
+        # Generate audio using the official generator
         with torch.no_grad():
-            # Tokenize the input text
-            inputs = tokenizer(request.text, return_tensors="pt", padding=True, truncation=True, max_length=512).to(device)
-            
-            # Generate audio using the model
-            if hasattr(model, 'generate'):
-                audio_output = model.generate(**inputs)
-            else:
-                # If model doesn't have generate method, use forward pass
-                outputs = model(**inputs)
-                audio_output = outputs.last_hidden_state if hasattr(outputs, 'last_hidden_state') else outputs[0]
-            
-            # Convert to numpy array if needed
-            if isinstance(audio_output, torch.Tensor):
-                audio_tensor = audio_output.cpu()
-            else:
-                audio_tensor = torch.from_numpy(audio_output)
+            audio = generator.generate(
+                text=request.text,
+                speaker=request.speaker,
+                context=[],
+                max_audio_length_ms=request.max_audio_length_ms,
+            )
             
             # Ensure correct shape for audio (1, samples)
-            if audio_tensor.dim() > 2:
-                audio_tensor = audio_tensor.squeeze()
-            if audio_tensor.dim() == 1:
-                audio_tensor = audio_tensor.unsqueeze(0)
+            if audio.dim() == 1:
+                audio = audio.unsqueeze(0)
             
             # Normalize audio to prevent clipping
-            audio_tensor = audio_tensor / torch.max(torch.abs(audio_tensor))
+            audio = audio / torch.max(torch.abs(audio))
         
         # Convert to WAV
         buffer = io.BytesIO()
-        torchaudio.save(buffer, audio_tensor, request.sample_rate, format="wav")
+        torchaudio.save(buffer, audio.cpu(), request.sample_rate, format="wav")
         buffer.seek(0)
         
         logger.info("✓ TTS audio generation completed successfully")
